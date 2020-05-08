@@ -2,7 +2,7 @@
 
 Gives you the ability to change the general and rare animal spawn rate.
 
-https://www.raftmodding.com/mods/filterednets
+https://www.raftmodding.com/mods/morerareanimals
 
 ## Features
 
