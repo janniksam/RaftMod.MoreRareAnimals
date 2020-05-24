@@ -1,6 +1,7 @@
-﻿namespace CustomMaxSpeed
+﻿namespace MoreRareAnimals
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.Linq;
     using System.Reflection;
@@ -15,12 +16,14 @@
     [ModIconUrl("https://raw.githubusercontent.com/janniksam/RaftMod.MoreRareAnimals/master/morerareanimals.png")]
     [ModWallpaperUrl("https://raw.githubusercontent.com/janniksam/RaftMod.MoreRareAnimals/master/morerareanimals.png")]
     [ModVersionCheckUrl("https://www.raftmodding.com/api/v1/mods/morerareanimals/version.txt")]
-    [ModVersion("1.0")]
+    [ModVersion("1.1")]
     [RaftVersion("Update 11 (4677160)")]
     [ModIsPermanent(false)]
     public class MoreRareAnimals : Mod
     {
         private HarmonyInstance m_harmony;
+        private static AssetBundle m_assetBundle;
+
         private const string HarmonyId = "com.janniksam.raftmods.morerareanimals";
         private const string ModNamePrefix = "<color=#42a7f5>MoreRare</color><color=#FF0000>Animals</color>";
 
@@ -28,14 +31,25 @@
                                                               "e.g. use \"moreanimals 4\" to let 4 times the amount of domestic animals spawn on each large island";
         private const string MoreAnimalsArgumentAreOutOfRange = "moreanimals: The spawn rate needs to be between 1 and 50.";
 
+        private const string MoreAnimalScalesArgumentsAreInvalid = "moreanimalscales: Needs two parameters.\n" +
+                                                              "e.g. use \"moreanimalscales 0.5 2.5\" lets animals spawn, that scale between 50% and 250% of its normal size.\n" +
+                                                              "Default scale factors are 0.8 to 1.2.";
+        private const string MoreAnimalScalesArgumentAreOutOfRange = "moreanimalscales: The factor needs to be between 0.5 and 3.";
+
+
         private const string MoreRareAnimalsArgumentsAreInvalid = "morerareanimals: Needs three parameters.\n" +
                                                                    "e.g. use \"morerareanimals 20 50 30\" to increase the chances for rare skin 1 to 50% and rare skin 2 to 30%";
         private const string MoreRareAnimalsArgumentsDoNotSumUpTo100 = "morerareanimals: Needs all arguments to have a total sum of exactly 100.";
         private const string MoreRareAnimalsSomeArgumentsAreNegative = "morerareanimals: Needs all arguments to be positive.";
 
         [UsedImplicitly]
-        public void Start()
+        public IEnumerator Start()
         {
+            var request = AssetBundle.LoadFromFileAsync("mods/ModData/MoreRareAnimals/llama_animator_fix.assets");
+            yield return request;
+
+            m_assetBundle = request.assetBundle;
+
             m_harmony = HarmonyInstance.Create(HarmonyId);
             m_harmony.PatchAll(Assembly.GetExecutingAssembly());
             RConsole.registerCommand(typeof(MoreRareAnimals),
@@ -47,12 +61,19 @@
                 "Gives you the ability to change the domestic animal spawn rate.",
                 "moreanimals",
                 SetSpawnRate);
+
+            RConsole.registerCommand(typeof(MoreRareAnimals),
+                "Gives you the ability to change the default animal scale factors.",
+                "moreanimalscales",
+                SetAnimalScales);
+
             RConsole.Log(string.Format("{0} has been loaded!", ModNamePrefix));
         }
 
         [UsedImplicitly]
         public void OnModUnload()
         {
+            m_assetBundle.Unload(true);
             m_harmony.UnpatchAll(HarmonyId);
             RConsole.Log(string.Format("{0} has been unloaded!", ModNamePrefix));
             Destroy(gameObject);
@@ -79,9 +100,47 @@
             if (spawnRate < 1 || spawnRate > 50)
             {
                 RConsole.Log(MoreAnimalsArgumentAreOutOfRange);
+                return;
             }
 
             ObjectSpawnerLandmarkEditPatch.DomesticSpawnFactor = spawnRate;
+            RConsole.Log(string.Format("{0}: Animal factor set to {1} successfully.", ModNamePrefix, spawnRate));
+        }
+
+        private static void SetAnimalScales()
+        {
+            var args = RConsole.lcargs;
+            if (args.Length != 3)
+            {
+                RConsole.Log(MoreAnimalScalesArgumentsAreInvalid);
+                return;
+            }
+
+            float minimum;
+            if ((!float.TryParse(args[1], out minimum)))
+            {
+                RConsole.Log(MoreAnimalScalesArgumentAreOutOfRange);
+                return;
+            }
+
+            float maximum;
+            if ((!float.TryParse(args[2], out maximum)))
+            {
+                RConsole.Log(MoreAnimalScalesArgumentAreOutOfRange);
+                return;
+            }
+
+            if (minimum < 0.5 ||
+                maximum > 3 || 
+                minimum > maximum)
+            {
+                RConsole.Log(MoreAnimalScalesArgumentAreOutOfRange);
+                return;
+            }
+
+            ScaleEditPatch.MinimumScaleFactor = minimum;
+            ScaleEditPatch.MaximumScaleFactor = maximum;
+            RConsole.Log(string.Format("{0}: Animal scale factor set to {1} min / {2} max successfully.", ModNamePrefix, minimum, maximum));
         }
 
         private static void SetRareProbabilities()
@@ -130,6 +189,79 @@
             RareMaterialEditPatch.RareSkin1Probability = rareSkin1;
             RareMaterialEditPatch.RareSkin2Probability = rareSkin2;
             RConsole.Log("Rare animal probabilities set successfully.");
+        }
+
+        [HarmonyPatch(typeof(AI_NetworkBehaviour_Domestic)), HarmonyPatch("SetNetworkIndexes")]
+        [UsedImplicitly]
+        public class ScaleEditPatch
+        {
+            internal static float MinimumScaleFactor = -1;
+            internal static float MaximumScaleFactor = -1;
+
+            [UsedImplicitly]
+            public static bool Prefix(
+                // ReSharper disable InconsistentNaming
+                AI_NetworkBehaviour_Animal __instance
+                // ReSharper restore InconsistentNaming
+                )
+            {
+                if (MinimumScaleFactor < 0 || 
+                    MaximumScaleFactor < 0)
+                {
+                    return true;
+                }
+
+                __instance.localScaleInterval = new Interval_Float(MinimumScaleFactor, MaximumScaleFactor);
+
+                var aiNetworkBehaviourLlama = __instance as AI_NetworkBehaviour_Llama;
+                if (aiNetworkBehaviourLlama == null)
+                {
+                    return true;
+                }
+
+                var fixedLlamaAnimator = m_assetBundle.LoadAsset<RuntimeAnimatorController>("Llama_Animator");
+                var componentInParent = aiNetworkBehaviourLlama.GetComponentInParent<Animator>();
+                componentInParent.runtimeAnimatorController = fixedLlamaAnimator;
+                return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(AI_Movement)), HarmonyPatch("ChangeMovementSpeedTowards")]
+        [UsedImplicitly]
+        public class ScaledSpeedEditPatch
+        {
+            [UsedImplicitly]
+            public static bool Prefix(
+                // ReSharper disable InconsistentNaming
+                AI_Movement __instance,
+                ref float target,
+                ref float speed
+                // ReSharper restore InconsistentNaming
+                )
+            {
+                var aiNetworkBehaviourDomestic = __instance.GetComponentInParent(typeof(AI_NetworkBehaviour_Domestic)) as AI_NetworkBehaviour_Domestic;
+                if (aiNetworkBehaviourDomestic == null)
+                {
+                    return true;
+                }
+                
+                var speedFactor = aiNetworkBehaviourDomestic.scaledSize;
+                var aiStateMachineDomestic = __instance.GetComponentInParent(typeof(AI_StateMachine_Domestic)) as AI_StateMachine_Domestic;
+                
+                // is running
+                const int stateRunning = 1;
+                if (aiStateMachineDomestic != null &&
+                    aiStateMachineDomestic.currentState != null &&
+                    aiStateMachineDomestic.currentState.stateIndex == stateRunning &&
+                    speedFactor > 3)
+                {
+                    speedFactor = 3;
+                }
+
+                target *= speedFactor;
+                speed *= speedFactor;
+                return true;
+            }
         }
 
         [HarmonyPatch(typeof(RareMaterial)), HarmonyPatch("AssignRandomRareMaterial")]
