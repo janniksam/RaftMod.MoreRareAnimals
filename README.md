@@ -14,9 +14,14 @@ There are two commands that you can use:
 
 ## Under development
 
-This mod currently under development. 
+This mod currently under development. Don't use it with a save file that you're not willing loose.
 
 ## Changelog
+
+Version 1.2
+
+- New: Every type will be spawned be spawned now. It does not matter anymore, what animal would spawn on a specific island by default.
+- Fix: The caught animals will no longer disappear when relogging.
 
 Version 1.1
 

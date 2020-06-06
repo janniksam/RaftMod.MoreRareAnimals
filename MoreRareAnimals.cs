@@ -16,7 +16,7 @@
     [ModIconUrl("https://raw.githubusercontent.com/janniksam/RaftMod.MoreRareAnimals/master/morerareanimals.png")]
     [ModWallpaperUrl("https://raw.githubusercontent.com/janniksam/RaftMod.MoreRareAnimals/master/morerareanimals.png")]
     [ModVersionCheckUrl("https://www.raftmodding.com/api/v1/mods/morerareanimals/version.txt")]
-    [ModVersion("1.1")]
+    [ModVersion("1.2")]
     [RaftVersion("Update 11 (4677160)")]
     [ModIsPermanent(false)]
     public class MoreRareAnimals : Mod
@@ -131,7 +131,7 @@
             }
 
             if (minimum < 0.5 ||
-                maximum > 3 || 
+                maximum > 3 ||
                 minimum > maximum)
             {
                 RConsole.Log(MoreAnimalScalesArgumentAreOutOfRange);
@@ -205,7 +205,7 @@
                 // ReSharper restore InconsistentNaming
                 )
             {
-                if (MinimumScaleFactor < 0 || 
+                if (MinimumScaleFactor < 0 ||
                     MaximumScaleFactor < 0)
                 {
                     return true;
@@ -244,10 +244,10 @@
                 {
                     return true;
                 }
-                
+
                 var speedFactor = aiNetworkBehaviourDomestic.scaledSize;
                 var aiStateMachineDomestic = __instance.GetComponentInParent(typeof(AI_StateMachine_Domestic)) as AI_StateMachine_Domestic;
-                
+
                 // is running
                 const int stateRunning = 1;
                 if (aiStateMachineDomestic != null &&
@@ -277,8 +277,8 @@
                     // ReSharper disable InconsistentNaming
                     // ReSharper disable SuggestBaseTypeForParameter
                     RareMaterial __instance)
-                    // ReSharper restore SuggestBaseTypeForParameter
-                    // ReSharper restore InconsistentNaming
+            // ReSharper restore SuggestBaseTypeForParameter
+            // ReSharper restore InconsistentNaming
             {
                 if (!Semih_Network.IsHost)
                 {
@@ -339,24 +339,29 @@
                 "Mushroom"
             };
 
+            private static readonly AI_NetworkBehaviourType[] m_domesticTypes =
+            {
+                AI_NetworkBehaviourType.Llama,
+                AI_NetworkBehaviourType.Chicken,
+                AI_NetworkBehaviourType.Goat
+            };
+
             public static int DomesticSpawnFactor = 1;
-            
+
             [UsedImplicitly]
             public static bool Prefix(
                     // ReSharper disable InconsistentNaming
                     // ReSharper disable SuggestBaseTypeForParameter
                     LandmarkEntitySpawner __instance)
-                    // ReSharper restore SuggestBaseTypeForParameter
-                    // ReSharper restore InconsistentNaming
+            // ReSharper restore SuggestBaseTypeForParameter
+            // ReSharper restore InconsistentNaming
             {
                 if (!Semih_Network.IsHost)
                 {
                     return true;
                 }
 
-                if (__instance.entityType != AI_NetworkBehaviourType.Llama &&
-                    __instance.entityType != AI_NetworkBehaviourType.Chicken &&
-                    __instance.entityType != AI_NetworkBehaviourType.Goat)
+                if (!m_domesticTypes.Contains(__instance.entityType))
                 {
                     return true;
                 }
@@ -366,7 +371,6 @@
                     return true;
                 }
 
-                var oldPosition = __instance.transform.position;
                 try
                 {
                     m_isInPatchMode = true;
@@ -378,25 +382,38 @@
                     __instance.landmark.OnLandmarkRemoved += OnLandmarkRemoved;
                     for (var i = 1; i < DomesticSpawnFactor; i++)
                     {
-                        var range = Random.Range(0, usableLocations.Length);
-                        __instance.transform.position = usableLocations[range].transform.position;
-                        Traverse.Create(__instance).Method("CreateEntity").GetValue();
-                        m_disposableAnimals.Enqueue(__instance.spawnedEntityBehaviour.ObjectIndex);
+                        var rangePosition = Random.Range(0, usableLocations.Length);
+                        var rangeDomesticTypes = Random.Range(0, m_domesticTypes.Length);
+
+                        var position = usableLocations[rangePosition].transform.position;
+                        var domesticType = m_domesticTypes[rangeDomesticTypes];
+
+                        var behaviour = SpawnAnimal(domesticType, position);
+                        m_disposableAnimals.Enqueue(behaviour.ObjectIndex);
                     }
                 }
                 finally
                 {
-                    __instance.transform.position = oldPosition;
                     m_isInPatchMode = false;
                 }
 
                 return true;
             }
 
+            private static AI_NetworkBehaviour SpawnAnimal(AI_NetworkBehaviourType animalType, Vector3 position)
+            {
+                if (!Semih_Network.IsHost)
+                {
+                    return null;
+                }
+
+                return ComponentManager<Network_Host_Entities>.Value.CreateAINetworkBehaviour(animalType, position);
+            }
+
             private static void OnLandmarkRemoved()
             {
                 while (m_disposableAnimals.Count > 0)
-                { 
+                {
                     var index = m_disposableAnimals.Dequeue();
                     NetworkIDManager.SendIDBehaviourDead(index, typeof(AI_NetworkBehaviour), true);
                 }
