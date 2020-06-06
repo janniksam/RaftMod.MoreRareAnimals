@@ -14,7 +14,7 @@ There are two commands that you can use:
 
 ## Under development
 
-This mod currently under development. Don't use it with a save file that you're not willing loose.
+This mod currently under development. Do not use it with a save file that you're not willing to loose.
 
 ## Changelog
 
